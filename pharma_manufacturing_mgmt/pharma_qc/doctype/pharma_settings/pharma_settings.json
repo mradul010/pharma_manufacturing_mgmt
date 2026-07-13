@@ -1,0 +1,152 @@
+{
+ "actions": [],
+ "creation": "2026-07-07 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "workflow_section",
+  "enable_quarantine_workflow",
+  "auto_create_quality_inspection",
+  "auto_submit_release_transfer",
+  "column_break_workflow",
+  "restrict_quarantine_transfers",
+  "quarantine_release_role",
+  "scope_section",
+  "applicable_item_groups",
+  "warehouses_section",
+  "rm_quarantine_warehouse",
+  "rm_approved_warehouse",
+  "warehouse_column_break",
+  "fg_quarantine_warehouse",
+  "fg_approved_warehouse",
+  "rejected_warehouse"
+ ],
+ "fields": [
+  {
+   "fieldname": "workflow_section",
+   "fieldtype": "Section Break",
+   "label": "Workflow"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_quarantine_workflow",
+   "fieldtype": "Check",
+   "label": "Enable Quarantine Workflow"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_create_quality_inspection",
+   "fieldtype": "Check",
+   "label": "Auto Create Draft QI on Receipt"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_submit_release_transfer",
+   "fieldtype": "Check",
+   "label": "Auto Submit Release Transfer"
+  },
+  {
+   "fieldname": "column_break_workflow",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "restrict_quarantine_transfers",
+   "fieldtype": "Check",
+   "label": "Restrict Manual Transfers from Quarantine"
+  },
+  {
+   "fieldname": "quarantine_release_role",
+   "fieldtype": "Link",
+   "label": "Release Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break",
+   "label": "Scope"
+  },
+  {
+   "fieldname": "applicable_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Applicable Item Groups",
+   "options": "Pharma Item Group"
+  },
+  {
+   "fieldname": "warehouses_section",
+   "fieldtype": "Section Break",
+   "label": "Warehouses"
+  },
+  {
+   "fieldname": "rm_quarantine_warehouse",
+   "fieldtype": "Link",
+   "label": "RM Quarantine Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "rm_approved_warehouse",
+   "fieldtype": "Link",
+   "label": "RM Approved Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "warehouse_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fg_quarantine_warehouse",
+   "fieldtype": "Link",
+   "label": "FG Quarantine Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "fg_approved_warehouse",
+   "fieldtype": "Link",
+   "label": "FG Approved Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "rejected_warehouse",
+   "fieldtype": "Link",
+   "label": "Rejected Warehouse",
+   "options": "Warehouse"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-07 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pharma QC",
+ "name": "Pharma Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Pharma QA",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
