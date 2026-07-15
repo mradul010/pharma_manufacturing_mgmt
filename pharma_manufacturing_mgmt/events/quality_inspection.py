@@ -10,13 +10,16 @@ from pharma_manufacturing_mgmt.utils.batch_tools import (
 	set_batch_qc_status,
 )
 from pharma_manufacturing_mgmt.utils.settings import (
+	QC_STAGE_FG,
+	RELEASE_MODE_AUTO_DRAFT,
+	RELEASE_MODE_AUTO_SUBMIT,
 	get_fg_quarantine_warehouse,
 	get_pharma_settings,
+	get_release_mode,
 	get_rm_quarantine_warehouse,
 	has_configured_quarantine_warehouses,
 	is_item_in_scope,
 	is_workflow_enabled,
-	should_auto_submit_release_transfer,
 )
 from pharma_manufacturing_mgmt.utils.stock_tools import (
 	create_material_transfer_for_batch,
@@ -71,14 +74,14 @@ def on_submit(doc, method=None):
 			QC_STATUS_APPROVED,
 			_("QC approved via {0}.").format(doc.name),
 		)
-		_create_qc_transfer(doc, settings=settings, rejected=False)
+		_create_qc_transfer_if_configured(doc, settings=settings, rejected=False)
 	elif doc.status == "Rejected":
 		set_batch_qc_status(
 			doc.batch_no,
 			QC_STATUS_REJECTED,
 			_("QC rejected via {0}.").format(doc.name),
 		)
-		_create_qc_transfer(doc, settings=settings, rejected=True)
+		_create_qc_transfer_if_configured(doc, settings=settings, rejected=True)
 	else:
 		LOGGER.info("Quality Inspection %s skipped because status is %s", doc.name, doc.status)
 
@@ -108,12 +111,14 @@ def on_cancel(doc, method=None):
 
 
 def _create_qc_transfer(doc, settings, rejected: bool):
+	is_manufacture_qi = _is_manufacture_quality_inspection(doc)
 	source = get_quarantine_source_for_batch(
 		doc.item_code,
 		doc.batch_no,
 		settings=settings,
 		company=doc.company,
 		rejected=rejected,
+		preferred_stage=QC_STAGE_FG if is_manufacture_qi else None,
 	)
 	if not source:
 		frappe.throw(
@@ -125,6 +130,13 @@ def _create_qc_transfer(doc, settings, rejected: bool):
 				get_rm_quarantine_warehouse(settings),
 				get_fg_quarantine_warehouse(settings),
 			)
+		)
+
+	if is_manufacture_qi and source.stage != QC_STAGE_FG:
+		frappe.throw(
+			_(
+				"Manufacture Quality Inspection {0} is for item {1}, batch {2}, but no matching FG quarantine balance was found. QC movement was not created."
+			).format(doc.name, doc.item_code, doc.batch_no)
 		)
 
 	if not source.target_warehouse:
@@ -142,12 +154,60 @@ def _create_qc_transfer(doc, settings, rejected: bool):
 		target_warehouse=source.target_warehouse,
 		qty=source.qty,
 		company=doc.company,
-		auto_submit=should_auto_submit_release_transfer(settings),
+		auto_submit=(get_release_mode(settings) == RELEASE_MODE_AUTO_SUBMIT and not rejected),
 	)
+
+
+def _create_qc_transfer_if_configured(doc, settings, rejected: bool):
+	release_mode = get_release_mode(settings)
+	if release_mode not in (RELEASE_MODE_AUTO_DRAFT, RELEASE_MODE_AUTO_SUBMIT):
+		LOGGER.info("Quality Inspection %s release transfer skipped in Manual mode", doc.name)
+		return
+
+	try:
+		_create_qc_transfer(doc, settings=settings, rejected=rejected)
+	except Exception:
+		LOGGER.exception("Auto QC transfer creation failed for Quality Inspection %s", doc.name)
+		_add_qi_comment(
+			doc.name,
+			_(
+				"Automatic QC {0} transfer was not created. Please create the Stock Entry manually. Error: {1}"
+			).format(_("rejection") if rejected else _("release"), frappe.get_traceback()),
+		)
+
+
+def _add_qi_comment(quality_inspection: str, content: str):
+	if frappe.db.exists(
+		"Comment",
+		{
+			"comment_type": "Comment",
+			"reference_doctype": "Quality Inspection",
+			"reference_name": quality_inspection,
+			"content": content,
+		},
+	):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "Comment",
+			"comment_type": "Comment",
+			"reference_doctype": "Quality Inspection",
+			"reference_name": quality_inspection,
+			"content": content,
+		}
+	).insert(ignore_permissions=True)
 
 
 def _is_relevant_quality_inspection(doc) -> bool:
 	return bool(doc.item_code and doc.batch_no and is_item_in_scope(doc.item_code))
+
+
+def _is_manufacture_quality_inspection(doc) -> bool:
+	if doc.reference_type != "Stock Entry" or not doc.reference_name:
+		return False
+
+	return frappe.db.get_value("Stock Entry", doc.reference_name, "purpose") == "Manufacture"
 
 
 def _has_reading_value(doc) -> bool:

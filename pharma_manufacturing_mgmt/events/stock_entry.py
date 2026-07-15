@@ -28,7 +28,7 @@ def validate(doc, method=None):
 def on_submit(doc, method=None):
 	LOGGER.info("Stock Entry on_submit hook started for %s", doc.name)
 	settings = get_pharma_settings()
-	if not is_workflow_enabled(settings) or doc.purpose != "Manufacture":
+	if not is_workflow_enabled(settings) or not _is_manufacture_entry(doc):
 		return
 
 	if not has_configured_quarantine_warehouses(settings):
@@ -36,12 +36,10 @@ def on_submit(doc, method=None):
 		return
 
 	fg_quarantine_warehouse = get_fg_quarantine_warehouse(settings)
+	finished_item = _get_finished_item(doc)
 
 	for row in doc.get("items") or []:
-		if row.t_warehouse != fg_quarantine_warehouse:
-			continue
-
-		if not row.get("is_finished_item") and row.s_warehouse:
+		if not _is_finished_goods_output_row(row, fg_quarantine_warehouse, finished_item):
 			continue
 
 		if not is_item_in_scope(row.item_code):
@@ -78,3 +76,33 @@ def on_submit(doc, method=None):
 					child_row_reference=row.name,
 					comment_reference=doc,
 				)
+
+
+def _is_manufacture_entry(doc) -> bool:
+	return doc.purpose == "Manufacture" or doc.stock_entry_type == "Manufacture"
+
+
+def _is_finished_goods_output_row(row, fg_quarantine_warehouse: str, finished_item: str | None = None) -> bool:
+	if row.t_warehouse != fg_quarantine_warehouse:
+		return False
+
+	if row.s_warehouse:
+		return False
+
+	if row.get("is_finished_item"):
+		return True
+
+	return bool(finished_item and row.item_code == finished_item)
+
+
+def _get_finished_item(doc) -> str:
+	if hasattr(doc, "get_finished_item"):
+		return doc.get_finished_item() or ""
+
+	if doc.work_order:
+		return frappe.db.get_value("Work Order", doc.work_order, "production_item") or ""
+
+	if doc.bom_no:
+		return frappe.db.get_value("BOM", doc.bom_no, "item") or ""
+
+	return ""

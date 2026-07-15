@@ -9,9 +9,13 @@
   "enable_quarantine_workflow",
   "auto_create_quality_inspection",
   "auto_submit_release_transfer",
+  "release_mode",
   "column_break_workflow",
   "restrict_quarantine_transfers",
   "quarantine_release_role",
+  "dispatch_section",
+  "min_shelf_life_days_for_dispatch",
+  "shelf_life_action",
   "scope_section",
   "applicable_item_groups",
   "warehouses_section",
@@ -44,7 +48,15 @@
    "default": "0",
    "fieldname": "auto_submit_release_transfer",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Auto Submit Release Transfer"
+  },
+  {
+   "default": "Manual",
+   "fieldname": "release_mode",
+   "fieldtype": "Select",
+   "label": "Release Mode",
+   "options": "Manual\nAuto Draft\nAuto Submit"
   },
   {
    "fieldname": "column_break_workflow",
@@ -61,6 +73,24 @@
    "fieldtype": "Link",
    "label": "Release Role",
    "options": "Role"
+  },
+  {
+   "fieldname": "dispatch_section",
+   "fieldtype": "Section Break",
+   "label": "Dispatch"
+  },
+  {
+   "default": "0",
+   "fieldname": "min_shelf_life_days_for_dispatch",
+   "fieldtype": "Int",
+   "label": "Min Shelf Life Days for Dispatch"
+  },
+  {
+   "default": "Warn",
+   "fieldname": "shelf_life_action",
+   "fieldtype": "Select",
+   "label": "Shelf Life Action",
+   "options": "Warn\nStop"
   },
   {
    "fieldname": "scope_section",

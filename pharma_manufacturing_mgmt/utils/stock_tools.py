@@ -39,6 +39,7 @@ def get_quarantine_source_for_batch(
 	settings=None,
 	company: str | None = None,
 	rejected: bool = False,
+	preferred_stage: str | None = None,
 ):
 	settings = settings or get_pharma_settings()
 	candidates = [
@@ -53,6 +54,8 @@ def get_quarantine_source_for_batch(
 			"approved_warehouse": get_fg_approved_warehouse(settings),
 		},
 	]
+	if preferred_stage:
+		candidates.sort(key=lambda candidate: 0 if candidate["stage"] == preferred_stage else 1)
 
 	for candidate in candidates:
 		balance_qty = get_batch_balance_in_warehouse(
@@ -87,7 +90,13 @@ def create_material_transfer_for_batch(
 	company: str | None = None,
 	auto_submit: bool | None = None,
 ) -> str:
-	existing = get_linked_release_stock_entry(reference_qi)
+	existing = get_linked_release_stock_entry_for_movement(
+		reference_qi,
+		item_code,
+		batch_no,
+		source_warehouse,
+		target_warehouse,
+	)
 	if existing:
 		LOGGER.info("Existing Stock Entry %s found for Quality Inspection %s", existing, reference_qi)
 		return existing
@@ -155,6 +164,54 @@ def get_linked_release_stock_entry(quality_inspection: str, include_submitted: b
 		)
 		or ""
 	)
+
+
+def get_linked_release_stock_entry_for_movement(
+	quality_inspection: str,
+	item_code: str,
+	batch_no: str,
+	source_warehouse: str,
+	target_warehouse: str,
+	include_submitted: bool = True,
+) -> str:
+	docstatus_operator = "<" if include_submitted else "="
+	result = frappe.db.sql(
+		"""
+		SELECT se.name
+		FROM `tabStock Entry` se
+		INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
+		WHERE se.docstatus {docstatus_operator} %s
+			AND se.custom_pharma_release_ref = %s
+			AND sed.item_code = %s
+			AND sed.s_warehouse = %s
+			AND sed.t_warehouse = %s
+			AND sed.batch_no = %s
+		ORDER BY se.creation DESC
+		LIMIT 1
+		""".format(docstatus_operator=docstatus_operator),
+		(2 if include_submitted else 0, quality_inspection, item_code, source_warehouse, target_warehouse, batch_no),
+	)
+	if result:
+		return result[0][0]
+
+	result = frappe.db.sql(
+		"""
+		SELECT se.name
+		FROM `tabStock Entry` se
+		INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
+		INNER JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sed.serial_and_batch_bundle
+		WHERE se.docstatus {docstatus_operator} %s
+			AND se.custom_pharma_release_ref = %s
+			AND sed.item_code = %s
+			AND sed.s_warehouse = %s
+			AND sed.t_warehouse = %s
+			AND sbe.batch_no = %s
+		ORDER BY se.creation DESC
+		LIMIT 1
+		""".format(docstatus_operator=docstatus_operator),
+		(2 if include_submitted else 0, quality_inspection, item_code, source_warehouse, target_warehouse, batch_no),
+	)
+	return result[0][0] if result else ""
 
 
 def get_linked_release_stock_entries(quality_inspection: str):
