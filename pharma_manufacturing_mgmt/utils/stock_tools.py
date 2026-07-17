@@ -89,7 +89,9 @@ def create_material_transfer_for_batch(
 	qty: float,
 	company: str | None = None,
 	auto_submit: bool | None = None,
+	stock_entry_type: str | None = None,
 ) -> str:
+	stock_entry_type = stock_entry_type or _get_qc_release_stock_entry_type()
 	existing = get_linked_release_stock_entry_for_movement(
 		reference_qi,
 		item_code,
@@ -112,32 +114,41 @@ def create_material_transfer_for_batch(
 			_("No quarantine balance is available for batch {0} of item {1}.").format(batch_no, item_code)
 		)
 
-	stock_entry = frappe.get_doc(
-		{
-			"doctype": "Stock Entry",
-			"stock_entry_type": "Material Transfer",
-			"purpose": "Material Transfer",
-			"company": company,
-			"custom_pharma_release_ref": reference_qi,
-			"items": [
-				{
-					"item_code": item_code,
-					"qty": qty,
-					"s_warehouse": source_warehouse,
-					"t_warehouse": target_warehouse,
-					# ERPNext v16 can create the Serial and Batch Bundle from legacy batch fields
-					# when use_serial_batch_fields is enabled on a batch-tracked item.
-					"use_serial_batch_fields": 1,
-					"batch_no": batch_no,
-				}
-			],
-		}
-	)
-	stock_entry.insert(ignore_permissions=True)
+	stock_entry = None
+	try:
+		stock_entry = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"stock_entry_type": stock_entry_type,
+				"purpose": "Material Transfer",
+				"company": company,
+				"custom_pharma_release_ref": reference_qi,
+				"items": [
+					{
+						"item_code": item_code,
+						"qty": qty,
+						"s_warehouse": source_warehouse,
+						"t_warehouse": target_warehouse,
+						# ERPNext v16 can create the Serial and Batch Bundle from legacy batch fields
+						# when use_serial_batch_fields is enabled on a batch-tracked item.
+						"use_serial_batch_fields": 1,
+						"batch_no": batch_no,
+					}
+				],
+			}
+		)
+		stock_entry.insert(ignore_permissions=True)
 
-	should_submit = should_auto_submit_release_transfer() if auto_submit is None else auto_submit
-	if should_submit:
-		stock_entry.submit()
+		should_submit = should_auto_submit_release_transfer() if auto_submit is None else auto_submit
+		if should_submit:
+			stock_entry.submit()
+	except Exception:
+		if stock_entry and stock_entry.name and stock_entry.docstatus == 0:
+			try:
+				frappe.delete_doc("Stock Entry", stock_entry.name, ignore_permissions=True)
+			except Exception:
+				LOGGER.exception("Failed to delete partial Stock Entry %s", stock_entry.name)
+		raise
 
 	LOGGER.info(
 		"Stock Entry %s created for QI %s batch %s %s -> %s",
@@ -172,6 +183,7 @@ def get_linked_release_stock_entry_for_movement(
 	batch_no: str,
 	source_warehouse: str,
 	target_warehouse: str,
+	stock_entry_type: str | None = None,
 	include_submitted: bool = True,
 ) -> str:
 	docstatus_operator = "<" if include_submitted else "="
@@ -182,6 +194,7 @@ def get_linked_release_stock_entry_for_movement(
 		INNER JOIN `tabStock Entry Detail` sed ON sed.parent = se.name
 		WHERE se.docstatus {docstatus_operator} %s
 			AND se.custom_pharma_release_ref = %s
+			AND (%s IS NULL OR se.stock_entry_type = %s)
 			AND sed.item_code = %s
 			AND sed.s_warehouse = %s
 			AND sed.t_warehouse = %s
@@ -189,7 +202,16 @@ def get_linked_release_stock_entry_for_movement(
 		ORDER BY se.creation DESC
 		LIMIT 1
 		""".format(docstatus_operator=docstatus_operator),
-		(2 if include_submitted else 0, quality_inspection, item_code, source_warehouse, target_warehouse, batch_no),
+		(
+			2 if include_submitted else 0,
+			quality_inspection,
+			stock_entry_type,
+			stock_entry_type,
+			item_code,
+			source_warehouse,
+			target_warehouse,
+			batch_no,
+		),
 	)
 	if result:
 		return result[0][0]
@@ -202,6 +224,7 @@ def get_linked_release_stock_entry_for_movement(
 		INNER JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sed.serial_and_batch_bundle
 		WHERE se.docstatus {docstatus_operator} %s
 			AND se.custom_pharma_release_ref = %s
+			AND (%s IS NULL OR se.stock_entry_type = %s)
 			AND sed.item_code = %s
 			AND sed.s_warehouse = %s
 			AND sed.t_warehouse = %s
@@ -209,7 +232,16 @@ def get_linked_release_stock_entry_for_movement(
 		ORDER BY se.creation DESC
 		LIMIT 1
 		""".format(docstatus_operator=docstatus_operator),
-		(2 if include_submitted else 0, quality_inspection, item_code, source_warehouse, target_warehouse, batch_no),
+		(
+			2 if include_submitted else 0,
+			quality_inspection,
+			stock_entry_type,
+			stock_entry_type,
+			item_code,
+			source_warehouse,
+			target_warehouse,
+			batch_no,
+		),
 	)
 	return result[0][0] if result else ""
 
@@ -230,3 +262,7 @@ def _get_company_for_transfer(source_warehouse: str, target_warehouse: str) -> s
 		or frappe.defaults.get_user_default("Company")
 		or frappe.defaults.get_global_default("company")
 	)
+
+
+def _get_qc_release_stock_entry_type() -> str:
+	return "QC Release" if frappe.db.exists("Stock Entry Type", "QC Release") else "Material Transfer"

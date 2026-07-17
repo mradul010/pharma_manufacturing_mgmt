@@ -28,6 +28,7 @@ def get_pharma_settings():
 			{
 				"enable_quarantine_workflow": 0,
 				"auto_create_quality_inspection": 1,
+				"auto_create_quality_inspection_on_delivary": 0,
 				"auto_submit_release_transfer": 0,
 				"release_mode": RELEASE_MODE_MANUAL,
 				"restrict_quarantine_transfers": 1,
@@ -204,9 +205,13 @@ def get_release_role(settings=None) -> str:
 	return settings.get("quarantine_release_role") or DEFAULT_RELEASE_ROLE
 
 
-def should_auto_create_qi(settings=None) -> bool:
+def should_auto_create_quality_inspection(settings=None) -> bool:
 	settings = settings or get_pharma_settings()
-	return bool(cint(settings.get("auto_create_quality_inspection", 1)))
+	return bool(cint(settings.get("auto_create_quality_inspection_on_delivary", 0)))
+
+
+def should_auto_create_qi(settings=None) -> bool:
+	return should_auto_create_quality_inspection(settings)
 
 
 def should_auto_submit_release_transfer(settings=None) -> bool:

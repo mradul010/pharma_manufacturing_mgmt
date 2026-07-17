@@ -8,6 +8,7 @@
   "workflow_section",
   "enable_quarantine_workflow",
   "auto_create_quality_inspection",
+  "auto_create_quality_inspection_on_delivary",
   "auto_submit_release_transfer",
   "release_mode",
   "column_break_workflow",
@@ -43,6 +44,12 @@
    "fieldname": "auto_create_quality_inspection",
    "fieldtype": "Check",
    "label": "Auto Create Draft QI on Receipt"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_create_quality_inspection_on_delivary",
+   "fieldtype": "Check",
+   "label": "Auto Create Quality Inspection After Manufacture"
   },
   {
    "default": "0",

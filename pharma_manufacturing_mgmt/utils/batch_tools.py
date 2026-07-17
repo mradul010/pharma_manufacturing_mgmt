@@ -248,8 +248,22 @@ def get_latest_submitted_quality_inspection(
 	)
 
 
+def get_accepted_quality_inspection(item_code: str, batch_no: str) -> str:
+	if not (item_code and batch_no):
+		return ""
+
+	return get_latest_submitted_quality_inspection(
+		batch_no,
+		"Accepted",
+		item_code=item_code,
+	)
+
+
 def has_submitted_accepted_quality_inspection(batch_no: str, item_code: str | None = None) -> bool:
-	return bool(get_latest_submitted_quality_inspection(batch_no, "Accepted", item_code=item_code))
+	if item_code:
+		return bool(get_accepted_quality_inspection(item_code, batch_no))
+
+	return bool(get_latest_submitted_quality_inspection(batch_no, "Accepted"))
 
 
 def has_submitted_qc_release(batch_no: str) -> bool:
