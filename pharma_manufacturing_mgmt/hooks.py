@@ -43,7 +43,9 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Delivery Note": "public/js/delivery_note.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -165,6 +167,14 @@ doc_events = {
 	"Stock Entry": {
 		"validate": "pharma_manufacturing_mgmt.events.stock_entry.validate",
 		"on_submit": "pharma_manufacturing_mgmt.events.stock_entry.on_submit",
+	},
+	"Delivery Note": {
+		"validate": "pharma_manufacturing_mgmt.utils.gates.validate_outbound",
+		"on_submit": "pharma_manufacturing_mgmt.utils.gates.on_outbound_submit",
+	},
+	"Sales Invoice": {
+		"validate": "pharma_manufacturing_mgmt.utils.gates.validate_outbound",
+		"on_submit": "pharma_manufacturing_mgmt.utils.gates.on_outbound_submit",
 	},
 }
 

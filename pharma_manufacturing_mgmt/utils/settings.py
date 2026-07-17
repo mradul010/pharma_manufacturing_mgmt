@@ -5,6 +5,11 @@ from frappe.utils import cint
 
 QC_STAGE_RM = "RM"
 QC_STAGE_FG = "FG"
+RELEASE_MODE_MANUAL = "Manual"
+RELEASE_MODE_AUTO_DRAFT = "Auto Draft"
+RELEASE_MODE_AUTO_SUBMIT = "Auto Submit"
+SHELF_LIFE_ACTION_WARN = "Warn"
+SHELF_LIFE_ACTION_STOP = "Stop"
 
 DEFAULT_RELEASE_ROLE = "Pharma QA"
 
@@ -23,9 +28,13 @@ def get_pharma_settings():
 			{
 				"enable_quarantine_workflow": 0,
 				"auto_create_quality_inspection": 1,
+				"auto_create_quality_inspection_on_delivary": 0,
 				"auto_submit_release_transfer": 0,
+				"release_mode": RELEASE_MODE_MANUAL,
 				"restrict_quarantine_transfers": 1,
 				"quarantine_release_role": DEFAULT_RELEASE_ROLE,
+				"min_shelf_life_days_for_dispatch": 0,
+				"shelf_life_action": SHELF_LIFE_ACTION_WARN,
 				"rm_quarantine_warehouse": "",
 				"rm_approved_warehouse": "",
 				"fg_quarantine_warehouse": "",
@@ -196,19 +205,55 @@ def get_release_role(settings=None) -> str:
 	return settings.get("quarantine_release_role") or DEFAULT_RELEASE_ROLE
 
 
-def should_auto_create_qi(settings=None) -> bool:
+def should_auto_create_quality_inspection(settings=None) -> bool:
 	settings = settings or get_pharma_settings()
-	return bool(cint(settings.get("auto_create_quality_inspection", 1)))
+	return bool(cint(settings.get("auto_create_quality_inspection_on_delivary", 0)))
+
+
+def should_auto_create_qi(settings=None) -> bool:
+	return should_auto_create_quality_inspection(settings)
 
 
 def should_auto_submit_release_transfer(settings=None) -> bool:
 	settings = settings or get_pharma_settings()
-	return bool(cint(settings.get("auto_submit_release_transfer", 0)))
+	return get_release_mode(settings) == RELEASE_MODE_AUTO_SUBMIT
+
+
+def get_release_mode(settings=None) -> str:
+	settings = settings or get_pharma_settings()
+	mode = settings.get("release_mode") or RELEASE_MODE_MANUAL
+	if mode not in (RELEASE_MODE_MANUAL, RELEASE_MODE_AUTO_DRAFT, RELEASE_MODE_AUTO_SUBMIT):
+		return RELEASE_MODE_MANUAL
+
+	return mode
+
+
+def get_min_shelf_life_days_for_dispatch(settings=None) -> int:
+	settings = settings or get_pharma_settings()
+	return cint(settings.get("min_shelf_life_days_for_dispatch") or 0)
+
+
+def get_shelf_life_action(settings=None) -> str:
+	settings = settings or get_pharma_settings()
+	action = settings.get("shelf_life_action") or SHELF_LIFE_ACTION_WARN
+	if action not in (SHELF_LIFE_ACTION_WARN, SHELF_LIFE_ACTION_STOP):
+		return SHELF_LIFE_ACTION_WARN
+
+	return action
 
 
 def should_restrict_quarantine_transfers(settings=None) -> bool:
 	settings = settings or get_pharma_settings()
 	return bool(cint(settings.get("restrict_quarantine_transfers", 1)))
+
+
+@frappe.whitelist()
+def get_dispatch_defaults(item_code: str | None = None):
+	settings = get_pharma_settings()
+	return {
+		"is_item_in_scope": is_item_in_scope(item_code) if item_code else False,
+		"fg_approved_warehouse": get_fg_approved_warehouse(settings),
+	}
 
 
 @frappe.whitelist()

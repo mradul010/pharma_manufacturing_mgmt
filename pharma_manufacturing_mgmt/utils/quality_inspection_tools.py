@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.utils import today
 
 
 LOGGER = frappe.logger("pharma_qc")
@@ -40,6 +41,7 @@ def create_draft_quality_inspection(
 			"batch_no": batch_no,
 			"sample_size": sample_size,
 			"company": company,
+			"report_date": today(),
 			"child_row_reference": child_row_reference,
 		}
 	)

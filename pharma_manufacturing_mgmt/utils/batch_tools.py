@@ -77,15 +77,27 @@ def set_batch_qc_status(
 	if status not in QC_STATUSES:
 		frappe.throw(_("Invalid QC status {0}.").format(status))
 
+	current_status = get_batch_qc_status(batch_no)
 	values = {"custom_qc_status": status}
 	frappe.db.set_value("Batch", batch_no, values)
 	LOGGER.info("Batch %s QC status changed to %s", batch_no, status)
 
-	if comment_text:
+	if comment_text and current_status != status:
 		add_batch_comment(batch_no, comment_text)
 
 
 def add_batch_comment(batch_no: str, content: str):
+	if frappe.db.exists(
+		"Comment",
+		{
+			"comment_type": "Comment",
+			"reference_doctype": "Batch",
+			"reference_name": batch_no,
+			"content": content,
+		},
+	):
+		return
+
 	frappe.get_doc(
 		{
 			"doctype": "Comment",
@@ -208,10 +220,22 @@ def create_quality_inspection_for_batch(
 	)
 
 
-def get_latest_submitted_quality_inspection(batch_no: str, status: str | None = None) -> str:
+def get_latest_submitted_quality_inspection(
+	batch_no: str,
+	status: str | None = None,
+	item_code: str | None = None,
+	reference_type: str | None = None,
+	reference_name: str | None = None,
+) -> str:
 	filters = {"batch_no": batch_no, "docstatus": 1}
 	if status:
 		filters["status"] = status
+	if item_code:
+		filters["item_code"] = item_code
+	if reference_type:
+		filters["reference_type"] = reference_type
+	if reference_name:
+		filters["reference_name"] = reference_name
 
 	return (
 		frappe.db.get_value(
@@ -224,7 +248,21 @@ def get_latest_submitted_quality_inspection(batch_no: str, status: str | None = 
 	)
 
 
-def has_submitted_accepted_quality_inspection(batch_no: str) -> bool:
+def get_accepted_quality_inspection(item_code: str, batch_no: str) -> str:
+	if not (item_code and batch_no):
+		return ""
+
+	return get_latest_submitted_quality_inspection(
+		batch_no,
+		"Accepted",
+		item_code=item_code,
+	)
+
+
+def has_submitted_accepted_quality_inspection(batch_no: str, item_code: str | None = None) -> bool:
+	if item_code:
+		return bool(get_accepted_quality_inspection(item_code, batch_no))
+
 	return bool(get_latest_submitted_quality_inspection(batch_no, "Accepted"))
 
 

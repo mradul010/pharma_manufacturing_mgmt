@@ -1,17 +1,29 @@
 import frappe
 from frappe import _
+from frappe.utils import cint, date_diff, getdate
 
 from pharma_manufacturing_mgmt.utils.batch_tools import (
 	QC_STATUS_APPROVED,
+	QC_STATUS_QUARANTINE,
+	get_accepted_quality_inspection,
+	get_latest_submitted_quality_inspection,
 	get_batch_status,
 	get_row_batches,
+	set_batch_qc_status,
 )
 from pharma_manufacturing_mgmt.utils.settings import (
+	SHELF_LIFE_ACTION_STOP,
+	get_fg_approved_warehouse,
+	get_fg_quarantine_warehouse,
+	get_min_shelf_life_days_for_dispatch,
 	get_pharma_settings,
 	get_quarantine_warehouses,
 	get_release_role,
+	get_rejected_warehouse,
+	get_shelf_life_action,
 	has_configured_quarantine_warehouses,
 	is_item_in_scope,
+	is_quarantine_warehouse,
 	is_workflow_enabled,
 	should_restrict_quarantine_transfers,
 )
@@ -33,7 +45,64 @@ def validate_stock_entry(doc, method=None):
 		return
 
 	validate_batch_consumption(doc, settings=settings)
+	validate_qc_release(doc, settings=settings)
 	validate_quarantine_escape(doc, settings=settings)
+
+
+def validate_outbound(doc, method=None):
+	settings = get_pharma_settings()
+	if not is_workflow_enabled(settings):
+		return
+
+	if doc.doctype == "Sales Invoice" and not cint(doc.get("update_stock")):
+		return
+
+	if not has_configured_quarantine_warehouses(settings):
+		LOGGER.info("%s %s outbound validation skipped because warehouses are not configured", doc.doctype, doc.name)
+		return
+
+	if cint(doc.get("is_return")):
+		_validate_outbound_return(doc, settings=settings)
+		return
+
+	shelf_life_warnings = []
+	for row in doc.get("items") or []:
+		if not is_item_in_scope(row.item_code):
+			continue
+
+		for batch in get_row_batches(row):
+			_validate_outbound_batch(doc, row, batch.batch_no, settings=settings)
+			_validate_dispatch_shelf_life(doc, row, batch.batch_no, settings, shelf_life_warnings)
+
+	if shelf_life_warnings:
+		frappe.msgprint(
+			_("The following batches are below the minimum shelf life for dispatch:<br>{0}").format(
+				"<br>".join(shelf_life_warnings)
+			),
+			title=_("Shelf Life Warning"),
+			indicator="orange",
+		)
+
+
+def on_outbound_submit(doc, method=None):
+	settings = get_pharma_settings()
+	if (
+		not is_workflow_enabled(settings)
+		or (doc.doctype == "Sales Invoice" and not cint(doc.get("update_stock")))
+		or not cint(doc.get("is_return"))
+	):
+		return
+
+	for row in doc.get("items") or []:
+		if not is_item_in_scope(row.item_code):
+			continue
+
+		for batch in get_row_batches(row):
+			set_batch_qc_status(
+				batch.batch_no,
+				QC_STATUS_QUARANTINE,
+				_("Returned via {0} {1} - re-quarantined.").format(doc.doctype, doc.name),
+			)
 
 
 def validate_batch_consumption(doc, method=None, settings=None):
@@ -96,6 +165,35 @@ def validate_quarantine_escape(doc, method=None, settings=None):
 			)
 
 
+def validate_qc_release(doc, method=None, settings=None):
+	settings = settings or get_pharma_settings()
+	if not _is_qc_release_doc(doc):
+		return
+
+	for row in doc.get("items") or []:
+		if not _is_qc_release_row(row, settings):
+			continue
+
+		if not is_item_in_scope(row.item_code):
+			continue
+
+		batches = get_row_batches(row)
+		if not batches:
+			frappe.throw(
+				_("Row {0}: No batch could be resolved for QC Release item {1}.").format(
+					row.idx, row.item_code
+				)
+			)
+
+		for batch in batches:
+			_validate_qc_release_batch(
+				row,
+				batch.batch_no,
+				quality_inspection=doc.get("custom_pharma_release_ref"),
+				require_accepted=_is_submitting_doc(doc),
+			)
+
+
 def _is_consumed_row(doc, row) -> bool:
 	if not row.s_warehouse:
 		return False
@@ -104,3 +202,172 @@ def _is_consumed_row(doc, row) -> bool:
 		return False
 
 	return True
+
+
+def _is_qc_release_row(row, settings) -> bool:
+	if row.s_warehouse != get_fg_quarantine_warehouse(settings):
+		return False
+
+	if row.t_warehouse != get_fg_approved_warehouse(settings):
+		return False
+
+	return True
+
+
+def _is_qc_release_doc(doc) -> bool:
+	return bool(doc.get("custom_pharma_release_ref") or doc.get("stock_entry_type") == "QC Release")
+
+
+def _validate_qc_release_batch(
+	row,
+	batch_no: str,
+	quality_inspection: str | None = None,
+	require_accepted: bool = True,
+):
+	batch = frappe.db.get_value("Batch", batch_no, ["item", "custom_qc_status"], as_dict=True)
+	status = (batch or {}).get("custom_qc_status") or ""
+	if not batch:
+		frappe.throw(
+			_("Row {0}: Batch {1} for item {2} cannot be released because the Batch record was not found.").format(
+				row.idx, batch_no, row.item_code
+			)
+		)
+
+	if batch.item != row.item_code:
+		frappe.throw(
+			_(
+				"Row {0}: Batch {1} cannot be released for item {2}. Batch belongs to item {3}. Current batch QC status: {4}."
+			).format(row.idx, batch_no, row.item_code, batch.item or _("Not Set"), status or _("Not Set"))
+		)
+
+	if not require_accepted:
+		return
+
+	if status != QC_STATUS_APPROVED:
+		qi_state = _get_latest_quality_inspection_state(row.item_code, batch_no)
+		frappe.throw(
+			_(
+				"Row {0}: Batch {1} for item {2} cannot be transferred to FG Approved. Current batch QC status: {3}. Current QI state: {4}. Complete and submit the Quality Inspection with an Accepted result before submitting this Stock Entry."
+			).format(row.idx, batch_no, row.item_code, status or _("Not Set"), qi_state or _("Not Found"))
+		)
+
+	if quality_inspection and _is_accepted_quality_inspection(quality_inspection, row.item_code, batch_no):
+		return
+
+	if not quality_inspection and get_accepted_quality_inspection(row.item_code, batch_no):
+		return
+
+	qi_state = _get_latest_quality_inspection_state(row.item_code, batch_no)
+	frappe.throw(
+		_(
+			"Row {0}: Batch {1} for item {2} cannot be transferred to FG Approved. A submitted Accepted Quality Inspection was not found for this item and batch. Current batch QC status: {3}. Current QI state: {4}. Complete and submit the Quality Inspection with an Accepted result before submitting this Stock Entry."
+		).format(row.idx, batch_no, row.item_code, status or _("Not Set"), qi_state or _("Not Found"))
+	)
+
+
+def _is_accepted_quality_inspection(quality_inspection: str, item_code: str, batch_no: str) -> bool:
+	return bool(
+		frappe.db.exists(
+			"Quality Inspection",
+			{
+				"name": quality_inspection,
+				"item_code": item_code,
+				"batch_no": batch_no,
+				"docstatus": 1,
+				"status": "Accepted",
+			},
+		)
+	)
+
+
+def _is_submitting_doc(doc) -> bool:
+	return doc.docstatus == 1 or getattr(doc, "_action", None) == "submit"
+
+
+def _get_latest_quality_inspection_state(item_code: str, batch_no: str) -> str:
+	quality_inspection = frappe.db.get_value(
+		"Quality Inspection",
+		{
+			"item_code": item_code,
+			"batch_no": batch_no,
+			"docstatus": ("<", 2),
+		},
+		["status", "docstatus"],
+		order_by="modified desc",
+		as_dict=True,
+	)
+	if not quality_inspection:
+		return ""
+
+	docstatus_label = {0: _("Draft"), 1: _("Submitted")}.get(quality_inspection.docstatus, quality_inspection.docstatus)
+	return _("{0} ({1})").format(quality_inspection.status or _("Not Set"), docstatus_label)
+
+
+def _validate_outbound_batch(doc, row, batch_no: str, settings):
+	status = get_batch_status(batch_no)
+	if status != QC_STATUS_APPROVED:
+		frappe.throw(
+			_(
+				"Row {0}: item {1}, batch {2} is not QC-approved. Current status: {3}."
+			).format(row.idx, row.item_code, batch_no, status or _("Not Set"))
+		)
+
+	source_warehouse = row.get("warehouse")
+	if is_quarantine_warehouse(source_warehouse, settings) or source_warehouse == get_rejected_warehouse(settings):
+		frappe.throw(
+			_(
+				"Row {0}: item {1}, batch {2} is in warehouse {3}. Stock must exit via QC Release before delivery."
+			).format(row.idx, row.item_code, batch_no, source_warehouse)
+		)
+
+	quality_inspection = get_latest_submitted_quality_inspection(
+		batch_no,
+		"Accepted",
+		item_code=row.item_code,
+	)
+	if not quality_inspection:
+		frappe.throw(
+			_(
+				"Row {0}: item {1}, batch {2} has no submitted Accepted Quality Inspection."
+			).format(row.idx, row.item_code, batch_no)
+		)
+
+	row.custom_quality_inspection = quality_inspection
+
+
+def _validate_dispatch_shelf_life(doc, row, batch_no: str, settings, warnings: list[str]):
+	min_days = get_min_shelf_life_days_for_dispatch(settings)
+	if min_days <= 0:
+		return
+
+	expiry_date = frappe.db.get_value("Batch", batch_no, "expiry_date")
+	if not expiry_date:
+		return
+
+	posting_date = getdate(doc.get("posting_date") or frappe.utils.today())
+	remaining_days = date_diff(getdate(expiry_date), posting_date)
+	if remaining_days >= min_days:
+		return
+
+	message = _(
+		"Batch {0} expires on {1}; remaining shelf life is {2} days, required minimum is {3} days."
+	).format(batch_no, expiry_date, remaining_days, min_days)
+
+	if get_shelf_life_action(settings) == SHELF_LIFE_ACTION_STOP:
+		frappe.throw(message)
+
+	warnings.append(message)
+
+
+def _validate_outbound_return(doc, settings):
+	for row in doc.get("items") or []:
+		if not is_item_in_scope(row.item_code):
+			continue
+
+		target_warehouse = row.get("warehouse")
+		if not is_quarantine_warehouse(target_warehouse, settings):
+			frappe.throw(
+				_(
+					"Row {0}: return item {1} must be received into a quarantine warehouse."
+				).format(row.idx, row.item_code)
+			)
