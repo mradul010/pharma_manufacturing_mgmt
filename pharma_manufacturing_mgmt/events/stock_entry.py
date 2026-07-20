@@ -4,6 +4,7 @@ from frappe import _
 from pharma_manufacturing_mgmt.utils.gates import validate_stock_entry
 from pharma_manufacturing_mgmt.utils.batch_tools import (
 	QC_STATUS_QUARANTINE,
+	add_batch_comment,
 	get_row_batches,
 	set_batch_qc_status,
 )
@@ -25,8 +26,13 @@ def validate(doc, method=None):
 
 def on_submit(doc, method=None):
 	LOGGER.info("Stock Entry on_submit hook started for %s", doc.name)
+	if doc.docstatus != 1 or doc.purpose != "Manufacture":
+		return
+
+	_set_work_order_party_on_fg_batches(doc)
+
 	settings = get_pharma_settings()
-	if doc.docstatus != 1 or doc.purpose != "Manufacture" or not is_workflow_enabled(settings):
+	if not is_workflow_enabled(settings):
 		return
 
 	fg_quarantine_warehouse = get_fg_quarantine_warehouse(settings)
@@ -100,8 +106,11 @@ def on_submit(doc, method=None):
 			)
 
 
-def _is_finished_goods_output_row(row, fg_quarantine_warehouse: str) -> bool:
-	if row.t_warehouse != fg_quarantine_warehouse:
+def _is_finished_goods_output_row(row, fg_quarantine_warehouse: str | None = None) -> bool:
+	if fg_quarantine_warehouse and row.t_warehouse != fg_quarantine_warehouse:
+		return False
+
+	if not row.t_warehouse:
 		return False
 
 	if row.s_warehouse:
@@ -111,6 +120,29 @@ def _is_finished_goods_output_row(row, fg_quarantine_warehouse: str) -> bool:
 		return False
 
 	return bool(row.get("is_finished_item"))
+
+
+def _set_work_order_party_on_fg_batches(doc):
+	if doc.docstatus != 1 or doc.purpose != "Manufacture" or not doc.work_order:
+		return
+
+	party = frappe.db.get_value("Work Order", doc.work_order, "custom_party")
+	if not party:
+		return
+
+	for row in doc.get("items") or []:
+		if not _is_finished_goods_output_row(row):
+			continue
+
+		for batch in get_row_batches(row):
+			if not _batch_matches_item(batch.batch_no, row.item_code, doc=doc, row=row, warehouse=row.t_warehouse):
+				continue
+
+			frappe.db.set_value("Batch", batch.batch_no, "custom_party", party)
+			add_batch_comment(
+				batch.batch_no,
+				_("Party set from {0}").format(doc.work_order),
+			)
 
 
 def _batch_matches_item(batch_no: str, item_code: str, doc, row, warehouse: str) -> bool:

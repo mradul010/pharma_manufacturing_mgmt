@@ -242,6 +242,7 @@ def _configure_settings(item_groups, warehouses):
 
 	settings.save(ignore_permissions=True)
 	frappe.clear_cache(doctype="Pharma Settings")
+	setup_packing_material()
 
 
 def _ensure_purchase_flow(company, supplier, item_code, qty, warehouse, days_back):
@@ -318,3 +319,194 @@ def _ensure_batch(item_code, batch_id):
 	batch = frappe.get_doc({"doctype": "Batch", "batch_id": batch_id, "item": item_code})
 	batch.insert(ignore_permissions=True)
 	return batch.name
+
+
+def setup_packing_material():
+	settings = frappe.get_single("Pharma Settings")
+	item_group = _ensure_item_group_with_parent("Packing Material", "All Item Groups")
+	_append_applicable_item_group(settings, item_group)
+
+	templates = _ensure_packing_material_templates()
+	rm_quarantine_warehouse = settings.rm_quarantine_warehouse
+	_ensure_packing_material_item(
+		"PM-JAR-120",
+		"Transparent Matka Jar 120g",
+		item_group,
+		templates["PM - Container/Jar"],
+		rm_quarantine_warehouse,
+	)
+	_ensure_packing_material_item(
+		"PM-LABEL-TOP",
+		"Top Label 47mm",
+		item_group,
+		templates["PM - Label"],
+		rm_quarantine_warehouse,
+	)
+
+
+def _ensure_item_group_with_parent(item_group_name: str, preferred_parent: str) -> str:
+	if frappe.db.exists("Item Group", item_group_name):
+		return item_group_name
+
+	parent = preferred_parent if frappe.db.exists("Item Group", preferred_parent) else frappe.db.get_value(
+		"Item Group", {"is_group": 1}, "name", order_by="lft asc"
+	)
+	doc = frappe.get_doc(
+		{
+			"doctype": "Item Group",
+			"item_group_name": item_group_name,
+			"parent_item_group": parent,
+			"is_group": 0,
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _append_applicable_item_group(settings, item_group: str):
+	for row in settings.get("applicable_item_groups") or []:
+		if row.item_group == item_group:
+			return
+
+	settings.append("applicable_item_groups", {"item_group": item_group})
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="Pharma Settings")
+
+
+def _ensure_packing_material_templates() -> dict[str, str]:
+	_parameters = {
+		"Empty Weight (g)",
+		"Neck Diameter (mm)",
+		"Visual / Leakage",
+		"Label Dimension (mm)",
+		"Avg. Label Weight (g)",
+		"Printed Content",
+		"Shipper Length (mm)",
+		"Shipper Breadth (mm)",
+		"Shipper Height (mm)",
+		"Ply / Thickness (mm)",
+		"Avg. Shipper Weight (kg)",
+	}
+	for parameter in _parameters:
+		if not frappe.db.exists("Quality Inspection Parameter", parameter):
+			frappe.get_doc(
+				{
+					"doctype": "Quality Inspection Parameter",
+					"parameter": parameter,
+				}
+			).insert(ignore_permissions=True)
+
+	template_specs = {
+		"PM - Container/Jar": [
+			("Empty Weight (g)", 1, 18, 22, None),
+			("Neck Diameter (mm)", 1, 52, 56, None),
+			("Visual / Leakage", 0, None, None, "No leakage, clear, no deformity"),
+		],
+		"PM - Label": [
+			("Label Dimension (mm)", 0, None, None, "As per specimen"),
+			("Avg. Label Weight (g)", 1, 0.30, 0.35, None),
+			("Printed Content", 0, None, None, "Matches approved artwork"),
+		],
+		"PM - Shipper": [
+			("Shipper Length (mm)", 1, 455, 461, None),
+			("Shipper Breadth (mm)", 1, 383, 388, None),
+			("Shipper Height (mm)", 1, 133, 138, None),
+			("Ply / Thickness (mm)", 1, 4, 5, None),
+			("Avg. Shipper Weight (kg)", 1, 1.10, 1.20, None),
+		],
+	}
+	return {
+		template_name: _ensure_pm_template(template_name, parameters)
+		for template_name, parameters in template_specs.items()
+	}
+
+
+def _ensure_pm_template(template_name: str, parameters: list[tuple]) -> str:
+	if frappe.db.exists("Quality Inspection Template", template_name):
+		template = frappe.get_doc("Quality Inspection Template", template_name)
+		template.set("item_quality_inspection_parameter", [])
+	else:
+		template = frappe.get_doc(
+			{
+				"doctype": "Quality Inspection Template",
+				"quality_inspection_template_name": template_name,
+			}
+		)
+
+	for parameter, numeric, min_value, max_value, value in parameters:
+		template.append(
+			"item_quality_inspection_parameter",
+			{
+				"specification": parameter,
+				"numeric": numeric,
+				"min_value": min_value,
+				"max_value": max_value,
+				"value": value,
+			},
+		)
+
+	if template.is_new():
+		template.insert(ignore_permissions=True)
+	else:
+		template.save(ignore_permissions=True)
+	return template.name
+
+
+def _ensure_packing_material_item(
+	item_code: str,
+	item_name: str,
+	item_group: str,
+	template: str,
+	default_warehouse: str,
+) -> str:
+	_ensure_uom("Nos")
+	item_values = {
+		"item_name": item_name,
+		"item_group": item_group,
+		"stock_uom": "Nos",
+		"is_stock_item": 1,
+		"is_purchase_item": 1,
+		"has_batch_no": 1,
+		"create_new_batch": 0,
+		"has_expiry_date": 0,
+		"quality_inspection_template": template,
+	}
+
+	if frappe.db.exists("Item", item_code):
+		item = frappe.get_doc("Item", item_code)
+		for fieldname, value in item_values.items():
+			item.set(fieldname, value)
+	else:
+		item = frappe.get_doc({"doctype": "Item", "item_code": item_code, **item_values})
+
+	if default_warehouse:
+		company = frappe.db.get_value("Warehouse", default_warehouse, "company")
+		_set_item_default_warehouse(item, company, default_warehouse)
+
+	if item.is_new():
+		item.insert(ignore_permissions=True)
+	else:
+		item.save(ignore_permissions=True)
+	return item.name
+
+
+def _set_item_default_warehouse(item, company: str | None, warehouse: str):
+	for row in item.get("item_defaults") or []:
+		if row.company == company:
+			row.default_warehouse = warehouse
+			return
+
+	item.append(
+		"item_defaults",
+		{
+			"company": company,
+			"default_warehouse": warehouse,
+		},
+	)
+
+
+def _ensure_uom(uom_name: str):
+	if frappe.db.exists("UOM", uom_name):
+		return
+
+	frappe.get_doc({"doctype": "UOM", "uom_name": uom_name}).insert(ignore_permissions=True)

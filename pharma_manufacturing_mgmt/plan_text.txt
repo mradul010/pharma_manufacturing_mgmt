@@ -1,0 +1,222 @@
+# Codex Task — Pharma Quick Wins (Detailed Spec)
+# A.R. Number + Dispensing Sheet + Party Field + Packing Material Scope
+
+App: `pharma_manufacturing_mgmt` | Frappe/ERPNext v16 | Branch: `task-quick-wins-1`
+One PR, four features, built in the order given (2 depends on 1; 3 feeds 2's header).
+
+## Context
+
+The app implements a quarantine QC workflow: batches carry
+`tabBatch.custom_qc_status` (Quarantine / Under Test / Approved / Rejected),
+set by Quality Inspection verdicts via our hooks; stock moves through
+"QC Release" / "QC Rejection" Stock Entry Types; consumption and outbound
+gates block non-Approved batches. Existing modules you MUST read before
+planning (confirm real names/signatures in your plan — do not guess):
+
+- `hooks.py` — doc_events map, fixtures list
+- `utils/settings.py` — `get_pharma_settings()`, `is_item_in_scope(item_code)`,
+  warehouse accessors
+- `utils/batch_tools.py` — `get_row_batches(row)` (bundle-aware batch reader;
+  the ONLY allowed way to read batches from voucher rows)
+- `events/quality_inspection.py` — QI lifecycle handlers
+- The stock entry event handler that runs on Manufacture submit (find it)
+- Existing in-app print formats (COA, QC status label) — find where they are
+  stored in the app (fixtures or module folder) and edit them there
+
+Ground rules (apply to every feature):
+- Never edit frappe/erpnext core. Custom fields as Custom Field fixtures,
+  module "Pharma QC", fieldnames prefixed `custom_`.
+- All SQL parameterized (`frappe.qb` or `frappe.db.sql` with %s). No f-strings.
+- All user-facing strings via `frappe._()`.
+- Do NOT write or run automated tests. Do NOT run live verification. After
+  implementing: `bench --site pharma-demo migrate` + `bench restart`, then
+  STOP and output: files changed, fixtures added, patches added, and any
+  deviation from this spec with reasoning.
+- Plan first (including the file paths you found in Context), wait for my
+  approval, then implement.
+
+---
+
+## Feature 1 — A.R. Number on Quality Inspection
+
+### Why
+Pharma QC references every analysis by an "A.R. No." (Analysis Reference).
+It must appear on COAs, labels, dispensing sheets. Our QI docname is not
+what users expect to quote; the A.R. No. is.
+
+### 1.1 Custom field
+Custom Field fixture on `Quality Inspection`:
+- fieldname `custom_ar_number`, label "A.R. No.", fieldtype Data
+- read_only 1, unique 1, in_list_view 1, in_standard_filter 1, bold 1
+- insert_after: `report_date` (or nearest sensible field — state your choice)
+
+### 1.2 Generation
+In our existing QI events module add `set_ar_number(doc, method=None)` wired
+to `before_insert` in hooks.py doc_events (extend the existing
+"Quality Inspection" dict, do not replace it):
+
+```python
+from frappe.model.naming import make_autoname
+def set_ar_number(doc, method=None):
+    if not doc.custom_ar_number:
+        doc.custom_ar_number = make_autoname("AR-.YY.-.#####")
+```
+- Applies to ALL Quality Inspections (not only in-scope items) — an A.R.
+  register must be gapless and site-wide.
+- Do NOT alter the doctype's autoname/naming series.
+
+### 1.3 Backfill patch
+Create a patch module (add to patches.txt):
+`pharma_manufacturing_mgmt.patches.v0_1.backfill_ar_numbers`
+- Select all Quality Inspections where `custom_ar_number` is NULL/empty,
+  ordered by `creation` ASC, and assign via the same make_autoname series
+  with `frappe.db.set_value` (no doc.save — records may be submitted).
+- Idempotent: second run finds nothing to do.
+- Wrap in a single transaction; print a count summary.
+
+### 1.4 Surface on existing prints (edit the in-app copies)
+- COA: in the subtitle line render `A.R. No.: {{ doc.custom_ar_number }}`
+  before the QI name; keep QI name as secondary reference.
+- QC status label: after the "Batch No." row add row
+  `A.R. No.` → value from the latest submitted QI for the batch (the label
+  already queries that QI for the "QC Ref." row — reuse the same variable;
+  show "—" when none).
+
+---
+
+## Feature 2 — Dispensing / Weighing Sheet print format
+
+### Why
+Stores prints this at dispensing time; production and QC countersign
+physical weighings on it. Modeled on real plant paper.
+
+### 2.1 Print format record
+In-app Print Format fixture (or module print format — match however COA is
+shipped in this app; be consistent):
+- name "Dispensing Sheet", doctype "Stock Entry", custom_format 1,
+  print_format_type "Jinja", standard as per app convention.
+
+### 2.2 Data assembly (top of the Jinja, keep logic in Jinja minimal)
+- `wo = frappe.get_doc("Work Order", doc.work_order)` when `doc.work_order`
+  is set; otherwise render header fields as "—" (format must not crash on
+  a manual MTfM without WO).
+- `bom = frappe.get_doc("BOM", wo.bom_no)` when WO exists.
+- Standard qty per ingredient: from `bom.items` matched by item_code,
+  scaled: `std_for_batch = bom_row.qty / bom.quantity * wo.qty`. If an item
+  row on the Stock Entry has no matching BOM row (extra issue), show "—" in
+  the standard column.
+- Per consumed row (rows with `s_warehouse` set), resolve batches via
+  `get_row_batches(row)`.
+- Per batch: latest submitted Accepted QI:
+```sql
+select name, custom_ar_number from `tabQuality Inspection`
+where batch_no = %(batch)s and item_code = %(item)s and docstatus = 1
+  and status = 'Accepted'
+order by report_date desc, creation desc limit 1
+```
+  Render its `custom_ar_number` (fallback to QI name if the field is somehow
+  empty; "—" if no QI).
+
+### 2.3 Layout (match COA styling: Arial, collapsed borders, wkhtmltopdf-safe;
+tables only, no flex/grid)
+- Title: "RAW MATERIAL DISPENSING / WEIGHING SHEET"
+- Header grid (2×N bordered table): Product (WO item code + item name),
+  Work Order, Batch Size (wo.qty + stock UOM), Party / Marketed By
+  (Feature 3 field; row hidden when empty), FG Batch No. if determinable
+  ("—" pre-manufacture), Date (doc.posting_date), Stock Entry no.
+- Ingredient table columns: S.N. | Ingredient (item_name, item_code muted
+  below) | Std. Qty (scaled, 3 decimals + UOM) | Issued Qty (row qty + UOM)
+  | Batch No.(s) | A.R. No. | Weighed By (blank) | Checked By (blank).
+  Blank columns min-width 22mm for handwriting.
+- Warning strip under the table, bold, centered:
+  "DO NOT DISPENSE RAW MATERIAL WITHOUT QC APPROVAL — SYSTEM ENFORCED"
+- Signature footer: three columns Prepared By (Stores) / Checked By (Mfg) /
+  Approved By (QC), each with Name / Sign / Date / Time ruled lines.
+
+---
+
+## Feature 3 — Party (Marketed By) on Work Order → Batch → prints
+
+### Why
+Contract manufacturers make every batch FOR a brand owner ("party"); the
+party must appear on batch documents. We store it on the WO (user input)
+and stamp it onto the FG batch (persistence for prints).
+
+### 3.1 Custom fields (fixtures)
+- `tabWork Order.custom_party` — Link Customer, label "Party / Marketed By",
+  insert_after `item_name` (or nearest header field; state your choice),
+  optional, in_list_view 1
+- `tabBatch.custom_party` — Link Customer, label "Party / Marketed By",
+  read_only 1
+
+### 3.2 Propagation
+In the existing Stock Entry submit handler (the one that already processes
+Manufacture entries — extend, don't duplicate hooks): when purpose is
+"Manufacture" and `doc.work_order` has `custom_party`, then for each FG batch
+created/used by the entry (target rows, via get_row_batches on rows with
+`t_warehouse`), `frappe.db.set_value("Batch", batch_no, "custom_party", party)`
++ one `add_comment` on the batch ("Party set from {WO}"). Skip silently when
+party is empty.
+
+### 3.3 Surface
+- Dispensing Sheet header (2.3) — from `wo.custom_party`.
+- COA: info grid row "Party / Marketed By" from the BATCH's custom_party
+  (`frappe.db.get_value("Batch", doc.batch_no, "custom_party")`), row
+  rendered only when set.
+- QC status label: row after "Material", only when set.
+
+---
+
+## Feature 4 — Packing Material in scope + PM QI templates
+
+### Why
+PM (jars, labels, shippers) gets the same GRN → quarantine → QC → release
+flow. Our workflow is item-group driven, so this is scope config + seed
+data + a hardcoding audit.
+
+### 4.1 demo_setup.py
+Extend (or create, if absent) `utils/demo_setup.py`, idempotent, run via
+`bench --site <site> execute pharma_manufacturing_mgmt.utils.demo_setup.run`.
+Add a `setup_packing_material()` step that creates:
+- Item Group "Packing Material" (parent "All Item Groups", is_group 0), and
+  appends it to Pharma Settings `applicable_item_groups` if not present
+  (save settings via doc API, not db.set_value, so validations run).
+- Quality Inspection Parameters (create if missing):
+  "Empty Weight (g)", "Neck Diameter (mm)", "Visual / Leakage",
+  "Label Dimension (mm)", "Avg. Label Weight (g)", "Printed Content",
+  "Shipper Length (mm)", "Shipper Breadth (mm)", "Shipper Height (mm)",
+  "Ply / Thickness (mm)", "Avg. Shipper Weight (kg)"
+- Three QI Templates:
+  - "PM - Container/Jar": Empty Weight (numeric 18–22), Neck Diameter
+    (numeric 52–56), Visual / Leakage (non-numeric, value "No leakage,
+    clear, no deformity")
+  - "PM - Label": Label Dimension (non-numeric, value "As per specimen"),
+    Avg. Label Weight (numeric 0.30–0.35), Printed Content (non-numeric,
+    value "Matches approved artwork")
+  - "PM - Shipper": Length (numeric 455–461), Breadth (numeric 383–388),
+    Height (numeric 133–138), Ply / Thickness (numeric 4–5), Avg. Shipper
+    Weight (numeric 1.10–1.20)
+- Two PM items: "PM-JAR-120" (Transparent Matka Jar 120g, UOM Nos) and
+  "PM-LABEL-TOP" (Top Label 47mm, UOM Nos): is_stock_item 1, has_batch_no 1,
+  create_new_batch 0, has_expiry_date 0, item_group "Packing Material",
+  QI template attached, item_default warehouse = RM Quarantine (from
+  settings, not hardcoded).
+
+### 4.2 Hardcoding audit (report, don't patch)
+Grep/read gates, events, and settings accessors for assumptions that break
+PM items, e.g.:
+- warehouse mapping accessors assuming exactly RM/FG pairs
+- expiry assumptions (PM items have has_expiry_date 0 — shelf-life and
+  expiry code must skip batches without expiry, not crash)
+- item_group string literals ("Raw Material", "FG") anywhere
+List every finding in your final summary with file:line. Only fix a finding
+if it causes an outright crash for PM items; otherwise report for discussion.
+
+---
+
+## Deliverable summary (what your final message must contain)
+1. Files changed/added (paths)
+2. Fixtures added (each Custom Field, Print Format)
+3. Patch added + what it did on pharma-demo (count backfilled)
+4. Hardcoding audit findings (file:line + severity)
+5. Any spec deviations + reasoning

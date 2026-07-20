@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.model.naming import make_autoname
 
 from pharma_manufacturing_mgmt.utils.batch_tools import (
 	QC_STATUS_APPROVED,
@@ -30,6 +31,11 @@ from pharma_manufacturing_mgmt.utils.stock_tools import (
 
 
 LOGGER = frappe.logger("pharma_qc")
+
+
+def set_ar_number(doc, method=None):
+	if not doc.get("custom_ar_number"):
+		doc.custom_ar_number = make_autoname("AR-.YY.-.#####")
 
 
 def set_under_test(doc, method=None):
