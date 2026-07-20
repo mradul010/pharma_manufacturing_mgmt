@@ -160,6 +160,7 @@ doc_events = {
 		"validate": "pharma_manufacturing_mgmt.events.purchase_invoice.warn_update_stock",
 	},
 	"Quality Inspection": {
+		"before_insert": "pharma_manufacturing_mgmt.events.quality_inspection.set_ar_number",
 		"on_update": "pharma_manufacturing_mgmt.events.quality_inspection.set_under_test",
 		"on_submit": "pharma_manufacturing_mgmt.events.quality_inspection.on_submit",
 		"on_cancel": "pharma_manufacturing_mgmt.events.quality_inspection.on_cancel",
