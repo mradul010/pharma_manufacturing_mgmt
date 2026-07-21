@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "stage",
+  "parameter",
+  "specification",
+  "limit_min",
+  "limit_max",
+  "observed_value",
+  "result",
+  "tested_by",
+  "test_time",
+  "quality_inspection"
+ ],
+ "fields": [
+  {
+   "fieldname": "stage",
+   "fieldtype": "Data",
+   "label": "Stage",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "parameter",
+   "fieldtype": "Data",
+   "label": "Parameter",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "specification",
+   "fieldtype": "Data",
+   "label": "Specification",
+   "columns": 2
+  },
+  {
+   "fieldname": "limit_min",
+   "fieldtype": "Float",
+   "label": "Limit Min",
+   "columns": 1
+  },
+  {
+   "fieldname": "limit_max",
+   "fieldtype": "Float",
+   "label": "Limit Max",
+   "columns": 1
+  },
+  {
+   "fieldname": "observed_value",
+   "fieldtype": "Data",
+   "label": "Observed",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "result",
+   "fieldtype": "Select",
+   "label": "Result",
+   "options": "\nPass\nFail",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "tested_by",
+   "fieldtype": "Link",
+   "label": "Tested By",
+   "options": "User"
+  },
+  {
+   "fieldname": "test_time",
+   "fieldtype": "Datetime",
+   "label": "Time"
+  },
+  {
+   "fieldname": "quality_inspection",
+   "fieldtype": "Link",
+   "label": "Quality Inspection",
+   "options": "Quality Inspection"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pharma Manufacturing Mgmt",
+ "name": "BMR IPC",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

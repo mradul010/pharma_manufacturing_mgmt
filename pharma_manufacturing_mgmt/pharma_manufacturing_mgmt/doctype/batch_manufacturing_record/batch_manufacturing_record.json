@@ -1,0 +1,329 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "product",
+  "product_name",
+  "work_order",
+  "bom",
+  "batch",
+  "cb_head",
+  "batch_size",
+  "stock_uom",
+  "mfg_date",
+  "exp_date",
+  "retest_date",
+  "label_claim",
+  "sb_status",
+  "status",
+  "sb_formula",
+  "formula_items",
+  "sb_dispensing",
+  "dispensing_items",
+  "sb_stages",
+  "stages",
+  "sb_ipc",
+  "ipc_records",
+  "sb_yield",
+  "yield_records",
+  "sb_dev",
+  "deviations",
+  "sb_qa",
+  "reviewed_by",
+  "reviewed_on",
+  "cb_qa",
+  "released_by",
+  "released_on",
+  "disposition",
+  "qa_remarks",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BMR-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "product",
+   "fieldtype": "Link",
+   "label": "Product",
+   "options": "Item",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "product_name",
+   "fieldtype": "Data",
+   "label": "Product Name",
+   "fetch_from": "product.item_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "label": "Work Order",
+   "options": "Work Order",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bom",
+   "fieldtype": "Link",
+   "label": "BOM",
+   "options": "BOM",
+   "fetch_from": "work_order.bom_no",
+   "read_only": 1
+  },
+  {
+   "fieldname": "batch",
+   "fieldtype": "Link",
+   "label": "Batch",
+   "options": "Batch"
+  },
+  {
+   "fieldname": "cb_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "batch_size",
+   "fieldtype": "Float",
+   "label": "Batch Size",
+   "reqd": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "fetch_from": "product.stock_uom",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mfg_date",
+   "fieldtype": "Date",
+   "label": "Mfg. Date"
+  },
+  {
+   "fieldname": "exp_date",
+   "fieldtype": "Date",
+   "label": "Expiry Date"
+  },
+  {
+   "fieldname": "retest_date",
+   "fieldtype": "Date",
+   "label": "Retest Date"
+  },
+  {
+   "fieldname": "label_claim",
+   "fieldtype": "Small Text",
+   "label": "Label Claim"
+  },
+  {
+   "fieldname": "sb_status",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nDispensed\nIn-Process\nBulk QC\nPacking\nQA Review\nReleased\nRejected\nOn Hold",
+   "default": "Draft",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "sb_formula",
+   "fieldtype": "Section Break",
+   "label": "Master Formula"
+  },
+  {
+   "fieldname": "formula_items",
+   "fieldtype": "Table",
+   "label": "Formula",
+   "options": "BMR Formula Item"
+  },
+  {
+   "fieldname": "sb_dispensing",
+   "fieldtype": "Section Break",
+   "label": "Dispensing"
+  },
+  {
+   "fieldname": "dispensing_items",
+   "fieldtype": "Table",
+   "label": "Materials Dispensed",
+   "options": "BMR Dispensing Item"
+  },
+  {
+   "fieldname": "sb_stages",
+   "fieldtype": "Section Break",
+   "label": "Processing Stages"
+  },
+  {
+   "fieldname": "stages",
+   "fieldtype": "Table",
+   "label": "Stages",
+   "options": "BMR Stage"
+  },
+  {
+   "fieldname": "sb_ipc",
+   "fieldtype": "Section Break",
+   "label": "In-Process Controls"
+  },
+  {
+   "fieldname": "ipc_records",
+   "fieldtype": "Table",
+   "label": "IPC",
+   "options": "BMR IPC"
+  },
+  {
+   "fieldname": "sb_yield",
+   "fieldtype": "Section Break",
+   "label": "Yield Reconciliation"
+  },
+  {
+   "fieldname": "yield_records",
+   "fieldtype": "Table",
+   "label": "Yield",
+   "options": "BMR Yield"
+  },
+  {
+   "fieldname": "sb_dev",
+   "fieldtype": "Section Break",
+   "label": "Deviations"
+  },
+  {
+   "fieldname": "deviations",
+   "fieldtype": "Table",
+   "label": "Deviations",
+   "options": "BMR Deviation"
+  },
+  {
+   "fieldname": "sb_qa",
+   "fieldtype": "Section Break",
+   "label": "QA Review & Release"
+  },
+  {
+   "fieldname": "reviewed_by",
+   "fieldtype": "Link",
+   "label": "Reviewed By (QA)",
+   "options": "User",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "reviewed_on",
+   "fieldtype": "Datetime",
+   "label": "Reviewed On",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "cb_qa",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "released_by",
+   "fieldtype": "Link",
+   "label": "Released By (QA)",
+   "options": "User",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "released_on",
+   "fieldtype": "Datetime",
+   "label": "Released On",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "disposition",
+   "fieldtype": "Select",
+   "label": "Disposition",
+   "options": "\nApproved\nRejected",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "qa_remarks",
+   "fieldtype": "Small Text",
+   "label": "QA Remarks",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Batch Manufacturing Record",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pharma Manufacturing Mgmt",
+ "name": "Batch Manufacturing Record",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "naming_series:",
+ "naming_rule": "By \"Naming Series\" field"
+}

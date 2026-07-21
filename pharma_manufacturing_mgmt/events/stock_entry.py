@@ -15,6 +15,9 @@ from pharma_manufacturing_mgmt.utils.settings import (
 	is_workflow_enabled,
 	should_auto_create_quality_inspection,
 )
+from pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record import (
+	sync_bmr_on_manufacture,
+)
 
 
 LOGGER = frappe.logger("pharma_qc")
@@ -30,6 +33,7 @@ def on_submit(doc, method=None):
 		return
 
 	_set_work_order_party_on_fg_batches(doc)
+	sync_bmr_on_manufacture(doc)
 
 	settings = get_pharma_settings()
 	if not is_workflow_enabled(settings):
