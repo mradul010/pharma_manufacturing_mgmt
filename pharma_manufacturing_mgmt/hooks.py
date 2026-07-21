@@ -154,6 +154,10 @@ doc_events = {
 	"Work Order": {
 		"on_submit": "pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record.create_bmr_from_work_order",
 	},
+	"Job Card": {
+		"on_submit": "pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record.sync_bmr_stage_from_job_card",
+		"on_update_after_submit": "pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record.sync_bmr_stage_from_job_card",
+	},
 	"Purchase Receipt": {
 		"validate": "pharma_manufacturing_mgmt.events.purchase_receipt.validate_quarantine_receipt",
 		"on_submit": "pharma_manufacturing_mgmt.events.purchase_receipt.on_submit",

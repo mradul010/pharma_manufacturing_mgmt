@@ -26,6 +26,17 @@ ALLOWED_TRANSITIONS = {
 
 GATED_STATUSES = ("QA Review", "Released", "Rejected")
 
+JOB_CARD_STATUS_MAP = {
+	"Open": "Pending",
+	"Work In Progress": "In Process",
+	"Partially Transferred": "In Process",
+	"Material Transferred": "In Process",
+	"Submitted": "In Process",
+	"On Hold": "On Hold",
+	"Completed": "Completed",
+	"Cancelled": "Pending",
+}
+
 
 class BatchManufacturingRecord(Document):
 	def validate(self):
@@ -133,6 +144,7 @@ def create_bmr_from_work_order(doc, method=None):
 	)
 	_copy_optional_party(doc, bmr)
 	_snapshot_formula(bmr, doc)
+	_snapshot_stages(bmr, doc)
 	bmr.insert(ignore_permissions=True)
 	LOGGER.info("BMR %s created for Work Order %s", bmr.name, doc.name)
 	frappe.msgprint(_("BMR {0} created for {1}").format(bmr.name, doc.name), indicator="green")
@@ -175,6 +187,21 @@ def _snapshot_formula(bmr, doc):
 
 	for row in bmr.formula_items:
 		row.percentage = round(flt(row.std_qty) / total_std_qty * 100, 2)
+
+
+def _snapshot_stages(bmr, doc):
+	for row in doc.get("operations") or []:
+		bmr.append(
+			"stages",
+			{
+				"stage_no": row.idx,
+				"stage_name": row.operation,
+				"operation": row.operation,
+				"workstation": row.workstation,
+				"planned_qty": doc.qty,
+				"status": "Pending",
+			},
+		)
 
 
 def sync_bmr_on_manufacture(doc):
@@ -285,3 +312,70 @@ def _get_ar_no(batch_no, item_code):
 		return "—"
 
 	return frappe.db.get_value("Quality Inspection", qi, "custom_ar_number") or qi
+
+
+def sync_bmr_stage_from_job_card(doc, method=None):
+	if not doc.work_order:
+		return
+
+	bmr_name = frappe.db.exists("Batch Manufacturing Record", {"work_order": doc.work_order})
+	if not bmr_name:
+		return
+
+	bmr = frappe.get_doc("Batch Manufacturing Record", bmr_name)
+	if bmr.docstatus != 0:
+		bmr.add_comment(
+			"Comment",
+			_("Job Card {0} updated after BMR submission — not synced.").format(doc.name),
+		)
+		return
+
+	stage = _find_or_append_stage(bmr, doc)
+	stage.job_card = doc.name
+	stage.performed_by = _resolve_performed_by(doc)
+	stage.started_at = doc.actual_start_date or _time_log_bound(doc, "from_time", min)
+	stage.completed_at = doc.actual_end_date or _time_log_bound(doc, "to_time", max)
+	stage.completed_qty = doc.total_completed_qty
+	stage.status = JOB_CARD_STATUS_MAP.get(doc.status, stage.status)
+
+	bmr.flags.ignore_permissions = True
+	bmr.save()
+	LOGGER.info("BMR %s stage synced from Job Card %s", bmr.name, doc.name)
+
+
+def _find_or_append_stage(bmr, doc):
+	for row in bmr.stages:
+		if row.operation != doc.operation:
+			continue
+		if row.workstation and doc.workstation and row.workstation != doc.workstation:
+			continue
+		return row
+
+	return bmr.append(
+		"stages",
+		{
+			"stage_name": doc.operation,
+			"operation": doc.operation,
+			"workstation": doc.workstation,
+			"planned_qty": doc.for_quantity,
+			"status": "Pending",
+		},
+	)
+
+
+def _resolve_performed_by(doc):
+	for row in doc.get("time_logs") or []:
+		if row.employee:
+			user = frappe.db.get_value("Employee", row.employee, "user_id")
+			if user:
+				return user
+
+	return doc.owner
+
+
+def _time_log_bound(doc, fieldname, agg_fn):
+	values = [row.get(fieldname) for row in doc.get("time_logs") or [] if row.get(fieldname)]
+	if not values:
+		return None
+
+	return agg_fn(values)
