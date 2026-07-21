@@ -1,0 +1,94 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "stage",
+  "theoretical_qty",
+  "actual_qty",
+  "uom",
+  "yield_pct",
+  "limit_min",
+  "limit_max",
+  "within_limit",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "stage",
+   "fieldtype": "Data",
+   "label": "Stage",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "theoretical_qty",
+   "fieldtype": "Float",
+   "label": "Theoretical Qty",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "actual_qty",
+   "fieldtype": "Float",
+   "label": "Actual Qty",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "columns": 1
+  },
+  {
+   "fieldname": "yield_pct",
+   "fieldtype": "Percent",
+   "label": "% Yield",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "limit_min",
+   "fieldtype": "Percent",
+   "label": "Min %",
+   "columns": 1
+  },
+  {
+   "fieldname": "limit_max",
+   "fieldtype": "Percent",
+   "label": "Max %",
+   "columns": 1
+  },
+  {
+   "fieldname": "within_limit",
+   "fieldtype": "Check",
+   "label": "Within Limit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pharma Manufacturing Mgmt",
+ "name": "BMR Yield",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
