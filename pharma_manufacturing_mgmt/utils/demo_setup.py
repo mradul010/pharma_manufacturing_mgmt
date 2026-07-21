@@ -3,6 +3,15 @@ from frappe import _
 from frappe.utils import add_days, nowtime, today
 
 
+WORKSTATIONS = ["Granulation Area", "Compression Area", "Packing Area"]
+OPERATIONS = ["Granulation", "Compression", "Packing"]
+FG_ITEM_WITH_OPERATIONS = "FG-PCM-500"
+BOM_OPERATIONS = [
+	("Granulation", "Granulation Area", 60),
+	("Compression", "Compression Area", 45),
+	("Packing", "Packing Area", 30),
+]
+
 DEMO_WAREHOUSES = {
 	"rm_quarantine": "RM Quaratine - VPPL",
 	"rm_approved": "RM Approved - VPPL",
@@ -48,6 +57,105 @@ def run():
 
 	frappe.db.commit()
 	frappe.msgprint(_("Pharma QC demo data is ready."))
+
+
+def setup_operations():
+	for workstation_name in WORKSTATIONS:
+		_ensure_workstation(workstation_name)
+
+	for operation_name in OPERATIONS:
+		_ensure_operation(operation_name)
+
+	bom_name = _ensure_bom_with_operations(FG_ITEM_WITH_OPERATIONS, BOM_OPERATIONS)
+
+	frappe.db.commit()
+	frappe.msgprint(
+		_(
+			"Operations demo data is ready. {0} is now the default, operations-enabled BOM for {1}. "
+			"Submit a new Work Order for {1} to get 3 auto-created Job Cards."
+		).format(bom_name, FG_ITEM_WITH_OPERATIONS)
+	)
+
+
+def _ensure_workstation(workstation_name: str) -> str:
+	if frappe.db.exists("Workstation", workstation_name):
+		return workstation_name
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "Workstation",
+			"workstation_name": workstation_name,
+			"production_capacity": 1,
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _ensure_operation(operation_name: str) -> str:
+	if frappe.db.exists("Operation", operation_name):
+		return operation_name
+
+	doc = frappe.get_doc({"doctype": "Operation", "name": operation_name})
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def _ensure_bom_with_operations(item_code: str, operations: list[tuple]) -> str:
+	existing_default = frappe.db.get_value("BOM", {"item": item_code, "is_default": 1}, "name")
+	if existing_default and _bom_has_operations(existing_default, operations):
+		return existing_default
+
+	if not existing_default:
+		frappe.throw(
+			_("No default BOM found for {0}; cannot build an operations-enabled BOM without a base to copy items from.").format(
+				item_code
+			)
+		)
+
+	source = frappe.get_doc("BOM", existing_default)
+	bom = frappe.get_doc(
+		{
+			"doctype": "BOM",
+			"item": item_code,
+			"quantity": source.quantity,
+			"uom": source.uom,
+			"with_operations": 1,
+			"is_default": 1,
+		}
+	)
+	for row in source.items:
+		bom.append(
+			"items",
+			{
+				"item_code": row.item_code,
+				"qty": row.qty,
+				"uom": row.uom,
+			},
+		)
+
+	for operation_name, workstation_name, time_in_mins in operations:
+		bom.append(
+			"operations",
+			{
+				"operation": operation_name,
+				"workstation": workstation_name,
+				"time_in_mins": time_in_mins,
+			},
+		)
+
+	bom.insert(ignore_permissions=True)
+	bom.submit()
+	return bom.name
+
+
+def _bom_has_operations(bom_name: str, operations: list[tuple]) -> bool:
+	bom = frappe.get_doc("BOM", bom_name)
+	if not bom.with_operations:
+		return False
+
+	existing_operations = {row.operation for row in bom.operations}
+	return all(operation_name in existing_operations for operation_name, _workstation, _time in operations)
 
 
 def _get_company():
