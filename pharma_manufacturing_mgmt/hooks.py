@@ -151,6 +151,9 @@ doc_events = {
 	"Batch": {
 		"after_insert": "pharma_manufacturing_mgmt.events.batch.set_default_qc_status",
 	},
+	"Work Order": {
+		"on_submit": "pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record.create_bmr_from_work_order",
+	},
 	"Purchase Receipt": {
 		"validate": "pharma_manufacturing_mgmt.events.purchase_receipt.validate_quarantine_receipt",
 		"on_submit": "pharma_manufacturing_mgmt.events.purchase_receipt.on_submit",

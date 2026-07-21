@@ -1,0 +1,113 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "item_name",
+  "batch_no",
+  "ar_no",
+  "std_qty",
+  "dispensed_qty",
+  "uom",
+  "no_of_containers",
+  "stock_entry",
+  "dispensed_by",
+  "checked_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "batch_no",
+   "fieldtype": "Link",
+   "label": "Batch No.",
+   "options": "Batch",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "ar_no",
+   "fieldtype": "Data",
+   "label": "A.R./Lot No.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "std_qty",
+   "fieldtype": "Float",
+   "label": "Std. Qty",
+   "columns": 1
+  },
+  {
+   "fieldname": "dispensed_qty",
+   "fieldtype": "Float",
+   "label": "Dispensed Qty",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "columns": 1
+  },
+  {
+   "fieldname": "no_of_containers",
+   "fieldtype": "Int",
+   "label": "No. of Containers",
+   "columns": 1
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry",
+   "options": "Stock Entry"
+  },
+  {
+   "fieldname": "dispensed_by",
+   "fieldtype": "Link",
+   "label": "Dispensed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "checked_by",
+   "fieldtype": "Link",
+   "label": "Checked By",
+   "options": "User"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Pharma Manufacturing Mgmt",
+ "name": "BMR Dispensing Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

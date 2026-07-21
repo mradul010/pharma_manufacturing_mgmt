@@ -26,6 +26,64 @@ def get_dispensing_sheet_context(stock_entry_name: str) -> dict:
 	}
 
 
+@frappe.whitelist()
+def get_qc_release_note_context(stock_entry_name: str) -> dict:
+	doc = frappe.get_doc("Stock Entry", stock_entry_name)
+	quality_inspection = (
+		frappe.get_doc("Quality Inspection", doc.custom_pharma_release_ref)
+		if doc.get("custom_pharma_release_ref")
+		else None
+	)
+	row = _get_primary_stock_entry_row(doc)
+	batch_no = _get_release_batch_no(row) if row else ""
+	item_code = row.item_code if row else ""
+	item_name = ""
+	if row and item_code:
+		item_name = row.item_name or frappe.db.get_value("Item", item_code, "item_name")
+	party = frappe.db.get_value("Batch", batch_no, "custom_party") if batch_no else ""
+	status = quality_inspection.status if quality_inspection else ""
+	ar_number = doc.get("custom_ar_number") or (
+		quality_inspection.custom_ar_number if quality_inspection else ""
+	)
+	report_date = quality_inspection.report_date if quality_inspection else None
+
+	return {
+		"title": "QC REJECTION NOTE" if status == "Rejected" else "QC RELEASE NOTE",
+		"entry_no": doc.name or EMPTY_VALUE,
+		"date": formatdate(doc.posting_date, "dd-mm-yyyy") if doc.posting_date else EMPTY_VALUE,
+		"item": _join_code_name(item_code, item_name) if item_code else EMPTY_VALUE,
+		"batch_no": batch_no or EMPTY_VALUE,
+		"qty": _format_qty(row.qty, row.uom) if row else EMPTY_VALUE,
+		"from_warehouse": (row.s_warehouse or EMPTY_VALUE) if row else EMPTY_VALUE,
+		"to_warehouse": (row.t_warehouse or EMPTY_VALUE) if row else EMPTY_VALUE,
+		"party": party or "",
+		"ar_number": ar_number or EMPTY_VALUE,
+		"quality_inspection": quality_inspection.name if quality_inspection else EMPTY_VALUE,
+		"report_date": formatdate(report_date, "dd-mm-yyyy") if report_date else EMPTY_VALUE,
+		"status": status or EMPTY_VALUE,
+	}
+
+
+def _get_primary_stock_entry_row(doc):
+	for row in doc.items:
+		if row.s_warehouse or row.t_warehouse:
+			return row
+
+	return doc.items[0] if doc.items else None
+
+
+def _get_release_batch_no(row) -> str:
+	batches = get_row_batches(row)
+	if batches:
+		return ", ".join(batch.batch_no for batch in batches if batch.batch_no)
+
+	return row.batch_no or ""
+
+
+def _format_qty(qty, uom) -> str:
+	return "{0:.3f} {1}".format(flt(qty), uom or "").strip()
+
+
 def _get_bom_rows_by_item_code(bom) -> dict:
 	if not bom:
 		return {}
