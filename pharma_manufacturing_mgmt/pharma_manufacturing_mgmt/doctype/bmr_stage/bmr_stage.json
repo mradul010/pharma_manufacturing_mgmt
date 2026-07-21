@@ -9,6 +9,11 @@
   "stage_name",
   "sop_ref",
   "job_card",
+  "operation",
+  "workstation",
+  "status",
+  "planned_qty",
+  "completed_qty",
   "instructions",
   "started_at",
   "completed_at",
@@ -43,6 +48,42 @@
    "label": "Job Card",
    "options": "Job Card",
    "columns": 2
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Link",
+   "label": "Operation",
+   "options": "Operation",
+   "columns": 2
+  },
+  {
+   "fieldname": "workstation",
+   "fieldtype": "Link",
+   "label": "Workstation",
+   "options": "Workstation",
+   "columns": 2
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nIn Process\nOn Hold\nCompleted",
+   "default": "Pending",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "planned_qty",
+   "fieldtype": "Float",
+   "label": "Planned Qty",
+   "columns": 1
+  },
+  {
+   "fieldname": "completed_qty",
+   "fieldtype": "Float",
+   "label": "Completed Qty",
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "instructions",
