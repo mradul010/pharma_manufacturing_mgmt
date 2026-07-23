@@ -2,6 +2,10 @@ import frappe
 from frappe import _
 from frappe.model.naming import make_autoname
 
+from pharma_manufacturing_mgmt.pharma_manufacturing_mgmt.doctype.batch_manufacturing_record.batch_manufacturing_record import (
+	clear_bmr_ipc_for_qi,
+	sync_bmr_ipc_from_qi,
+)
 from pharma_manufacturing_mgmt.utils.batch_tools import (
 	QC_STATUS_APPROVED,
 	QC_STATUS_QUARANTINE,
@@ -68,6 +72,8 @@ def set_under_test(doc, method=None):
 
 def on_submit(doc, method=None):
 	LOGGER.info("Quality Inspection on_submit hook started for %s", doc.name)
+	sync_bmr_ipc_from_qi(doc)
+
 	settings = get_pharma_settings()
 	if not is_workflow_enabled(settings):
 		return
@@ -107,6 +113,8 @@ def record_verdict(doc, method=None):
 
 def on_cancel(doc, method=None):
 	LOGGER.info("Quality Inspection on_cancel hook started for %s", doc.name)
+	clear_bmr_ipc_for_qi(doc)
+
 	settings = get_pharma_settings()
 	if not is_workflow_enabled(settings):
 		return
