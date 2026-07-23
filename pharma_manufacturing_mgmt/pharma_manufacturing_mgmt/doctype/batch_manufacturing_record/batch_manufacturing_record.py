@@ -7,6 +7,7 @@ from pharma_manufacturing_mgmt.utils.batch_tools import (
 	get_latest_submitted_quality_inspection,
 	get_row_batches,
 )
+from pharma_manufacturing_mgmt.utils.ipc_tools import get_ipc_template
 from pharma_manufacturing_mgmt.utils.settings import get_release_role, is_item_in_scope
 
 
@@ -145,6 +146,7 @@ def create_bmr_from_work_order(doc, method=None):
 	_copy_optional_party(doc, bmr)
 	_snapshot_formula(bmr, doc)
 	_snapshot_stages(bmr, doc)
+	_snapshot_ipc(bmr, doc)
 	bmr.insert(ignore_permissions=True)
 	LOGGER.info("BMR %s created for Work Order %s", bmr.name, doc.name)
 	frappe.msgprint(_("BMR {0} created for {1}").format(bmr.name, doc.name), indicator="green")
@@ -202,6 +204,45 @@ def _snapshot_stages(bmr, doc):
 				"status": "Pending",
 			},
 		)
+
+
+def _snapshot_ipc(bmr, doc):
+	for row in doc.get("operations") or []:
+		template_name = get_ipc_template(row.operation, bmr.product)
+		if not template_name:
+			continue
+
+		template = frappe.get_doc("Quality Inspection Template", template_name)
+		for param in template.item_quality_inspection_parameter:
+			already_seeded = any(
+				ipc.stage == row.operation and ipc.parameter == param.specification for ipc in bmr.ipc_records
+			)
+			if already_seeded:
+				continue
+
+			bmr.append(
+				"ipc_records",
+				{
+					"stage": row.operation,
+					"parameter": param.specification,
+					"specification": _format_spec(param),
+					"limit_min": param.min_value if param.numeric else None,
+					"limit_max": param.max_value if param.numeric else None,
+				},
+			)
+
+
+def _format_spec(param):
+	if not param.numeric:
+		return param.value
+
+	if param.min_value and param.max_value:
+		return "{0} – {1}".format(param.min_value, param.max_value)
+	if param.max_value:
+		return "NMT {0}".format(param.max_value)
+	if param.min_value:
+		return "NLT {0}".format(param.min_value)
+	return ""
 
 
 def sync_bmr_on_manufacture(doc):
@@ -379,3 +420,123 @@ def _time_log_bound(doc, fieldname, agg_fn):
 		return None
 
 	return agg_fn(values)
+
+
+def sync_bmr_ipc_from_qi(doc, method=None):
+	if doc.reference_type != "Job Card" or not doc.reference_name:
+		return
+
+	work_order = frappe.db.get_value("Job Card", doc.reference_name, "work_order")
+	bmr_name = work_order and frappe.db.exists("Batch Manufacturing Record", {"work_order": work_order})
+	if not bmr_name:
+		return
+
+	bmr = frappe.get_doc("Batch Manufacturing Record", bmr_name)
+	if bmr.docstatus != 0:
+		bmr.add_comment(
+			"Comment",
+			_("In-process QI {0} submitted after BMR submission — not synced.").format(doc.name),
+		)
+		return
+
+	stage_name = _stage_name_for_job_card(bmr, doc.reference_name)
+	for reading in doc.get("readings") or []:
+		ipc_row = _find_or_append_ipc(bmr, stage_name, reading.specification)
+		ipc_row.observed_value = _join_readings(reading)
+		ipc_row.result = "Pass" if reading.status == "Accepted" else "Fail"
+		ipc_row.tested_by = doc.inspected_by or doc.verified_by
+		ipc_row.test_time = doc.report_date
+		ipc_row.ar_no = doc.get("custom_ar_number") or doc.name
+		ipc_row.quality_inspection = doc.name
+		ipc_row.job_card = doc.reference_name
+
+		if ipc_row.result == "Fail":
+			_append_ipc_deviation(bmr, ipc_row)
+
+	bmr.flags.ignore_permissions = True
+	bmr.save()
+	LOGGER.info("BMR %s IPC synced from Quality Inspection %s", bmr.name, doc.name)
+
+
+def clear_bmr_ipc_for_qi(doc, method=None):
+	if doc.reference_type != "Job Card" or not doc.reference_name:
+		return
+
+	work_order = frappe.db.get_value("Job Card", doc.reference_name, "work_order")
+	bmr_name = work_order and frappe.db.exists("Batch Manufacturing Record", {"work_order": work_order})
+	if not bmr_name:
+		return
+
+	bmr = frappe.get_doc("Batch Manufacturing Record", bmr_name)
+	if bmr.docstatus != 0:
+		bmr.add_comment(
+			"Comment",
+			_("In-process QI {0} cancelled after BMR submission — not synced.").format(doc.name),
+		)
+		return
+
+	changed = False
+	for row in bmr.ipc_records:
+		if row.quality_inspection != doc.name:
+			continue
+
+		row.observed_value = ""
+		row.result = ""
+		row.tested_by = ""
+		row.test_time = None
+		row.ar_no = ""
+		row.quality_inspection = ""
+		row.job_card = ""
+		changed = True
+
+	if not changed:
+		return
+
+	bmr.flags.ignore_permissions = True
+	bmr.save()
+	LOGGER.info("BMR %s IPC cleared for cancelled Quality Inspection %s", bmr.name, doc.name)
+
+
+def _stage_name_for_job_card(bmr, job_card):
+	operation = frappe.db.get_value("Job Card", job_card, "operation")
+	if operation:
+		return operation
+
+	for row in bmr.stages:
+		if row.job_card == job_card:
+			return row.operation or row.stage_name
+
+	return None
+
+
+def _join_readings(reading):
+	values = [reading.get("reading_{0}".format(i)) for i in range(1, 11)]
+	return " / ".join(value for value in values if value)
+
+
+def _find_or_append_ipc(bmr, stage, parameter):
+	for row in bmr.ipc_records:
+		if row.stage == stage and row.parameter == parameter:
+			return row
+
+	return bmr.append("ipc_records", {"stage": stage, "parameter": parameter})
+
+
+def _append_ipc_deviation(bmr, ipc_row):
+	marker = "{0}: {1}".format(ipc_row.stage, ipc_row.parameter)
+	already_mentioned = any(
+		dev.description and marker in dev.description for dev in (bmr.deviations or [])
+	)
+	if already_mentioned:
+		return
+
+	bmr.append(
+		"deviations",
+		{
+			"description": _("IPC failure at stage {0}: {1} observed {2}, spec {3}").format(
+				ipc_row.stage, ipc_row.parameter, ipc_row.observed_value, ipc_row.specification
+			),
+			"classification": "Major",
+			"status": "Open",
+		},
+	)

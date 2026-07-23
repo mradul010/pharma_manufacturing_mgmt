@@ -14,7 +14,9 @@
   "result",
   "tested_by",
   "test_time",
-  "quality_inspection"
+  "ar_no",
+  "quality_inspection",
+  "job_card"
  ],
  "fields": [
   {
@@ -77,10 +79,21 @@
    "label": "Time"
   },
   {
+   "fieldname": "ar_no",
+   "fieldtype": "Data",
+   "label": "A.R./Lot No."
+  },
+  {
    "fieldname": "quality_inspection",
    "fieldtype": "Link",
    "label": "Quality Inspection",
    "options": "Quality Inspection"
+  },
+  {
+   "fieldname": "job_card",
+   "fieldtype": "Link",
+   "label": "Job Card",
+   "options": "Job Card"
   }
  ],
  "index_web_pages_for_search": 1,

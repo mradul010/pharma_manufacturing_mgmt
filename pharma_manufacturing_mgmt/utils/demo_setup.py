@@ -12,6 +12,34 @@ BOM_OPERATIONS = [
 	("Packing", "Packing Area", 30),
 ]
 
+IPC_PARAMETERS = [
+	"LOD %",
+	"Appearance (Granules)",
+	"Average Weight (mg)",
+	"Hardness (kp)",
+	"Leak Test",
+]
+
+IPC_TEMPLATE_SPECS = {
+	"IPC - Granulation": [
+		("LOD %", 1, 1.5, 3.0, None),
+		("Appearance (Granules)", 0, None, None, "Free flowing granules"),
+	],
+	"IPC - Compression": [
+		("Average Weight (mg)", 1, 570, 630, None),
+		("Hardness (kp)", 1, 4, 8, None),
+	],
+	"IPC - Packing": [
+		("Leak Test", 0, None, None, "No leakage"),
+	],
+}
+
+IPC_OPERATION_TEMPLATE_MAP = [
+	("Granulation", "IPC - Granulation"),
+	("Compression", "IPC - Compression"),
+	("Packing", "IPC - Packing"),
+]
+
 DEMO_WAREHOUSES = {
 	"rm_quarantine": "RM Quaratine - VPPL",
 	"rm_approved": "RM Approved - VPPL",
@@ -67,6 +95,7 @@ def setup_operations():
 		_ensure_operation(operation_name)
 
 	bom_name = _ensure_bom_with_operations(FG_ITEM_WITH_OPERATIONS, BOM_OPERATIONS)
+	setup_ipc_templates()
 
 	frappe.db.commit()
 	frappe.msgprint(
@@ -75,6 +104,39 @@ def setup_operations():
 			"Submit a new Work Order for {1} to get 3 auto-created Job Cards."
 		).format(bom_name, FG_ITEM_WITH_OPERATIONS)
 	)
+
+
+def setup_ipc_templates():
+	for parameter in IPC_PARAMETERS:
+		if not frappe.db.exists("Quality Inspection Parameter", parameter):
+			frappe.get_doc({"doctype": "Quality Inspection Parameter", "parameter": parameter}).insert(
+				ignore_permissions=True
+			)
+
+	for template_name, parameters in IPC_TEMPLATE_SPECS.items():
+		_ensure_pm_template(template_name, parameters)
+
+	for operation_name, template_name in IPC_OPERATION_TEMPLATE_MAP:
+		_ensure_operation_ipc(operation_name, template_name)
+
+	frappe.db.commit()
+
+
+def _ensure_operation_ipc(operation_name: str, template_name: str) -> str:
+	name = "{0}-{1}".format(operation_name, template_name)
+	if frappe.db.exists("Pharma Operation IPC", name):
+		return name
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "Pharma Operation IPC",
+			"operation": operation_name,
+			"quality_inspection_template": template_name,
+			"is_active": 1,
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return doc.name
 
 
 def _ensure_workstation(workstation_name: str) -> str:
